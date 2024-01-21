@@ -1,0 +1,113 @@
+---
+title: "EDA and Linear Regression on Housing Prices"
+author: "Jeremiah Brown"
+date: "2024-01-20"
+output: html_document
+---
+
+# Define the Problem
+### 1. Desired Outcome
+The goal of this project is to create a linear regression model that successfully predicts housing prices. 
+### 2. Requirements
+### 3. General Comments
+### 4. Plan of Attack 
+
+## Load Libraries 
+```{r include=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(include=TRUE, message = FALSE, warning = FALSE)
+library(tidyverse)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(reshape2)
+library(glmnet)
+```
+
+
+# Load Data
+
+```{r}
+train <- read_csv(paste(getwd(),"/Data/train.csv", sep=""))
+test <- read_csv(paste(getwd(),"/Data/test.csv", sep=""))
+```
+
+# Prepare Data
+
+```{r}
+head(train)
+```
+```{r}
+numericCols <- train %>% select(where(is.numeric))
+catCols <- train %>% select(!where(is.numeric))
+cat(paste("Numeric Columns: ", colnames(numericCols)), "\n\n")
+cat(paste("Categorical Columns: ", colnames(catCols)))
+```
+```{r}
+# Removing Id and other categorical variables.
+numericCols$Id <- NULL
+catCols$MSSubClass <- numericCols$MSSubClass
+numericCols$MSSubClass <- NULL
+catCols$YrSold <- numericCols$YrSold
+numericCols$YrSold <- NULL
+catCols$YearBuilt <- numericCols$YearBuilt
+numericCols$YearBuilt <- NULL
+catCols$YearRemodAdd <- numericCols$YearRemodAdd
+numericCols$YearRemodAdd <- NULL
+catCols$OverallQual <- numericCols$OverallQual
+numericCols$OverallQual <- NULL
+catCols$OverallCond <- numericCols$OverallCond
+numericCols$OverallCond <- NULL
+catCols$MoSold <- numericCols$MoSold
+numericCols$MoSold <- NULL
+catCols$GarageYrBlt <- numericCols$GarageYrBlt
+numericCols$GarageYrBlt <- NULL
+catCols$GarageCars <- numericCols$GarageCars
+numericCols$GarageCars <- NULL
+catCols$FirePlaces <-numericCols$Fireplaces
+numericCols$Fireplaces <- NULL
+catCols$TotRmsAbvGrd <- numericCols$TotRmsAbvGrd
+numericCols$TotRmsAbvGrd <- NULL
+catCols$BedroomAbvGr <- numericCols$BedroomAbvGr
+numericCols$BedroomAbvGr <- NULL
+catCols$KitchenAbvGr <- numericCols$KitchenAbvGr
+numericCols$KitchenAbvGr <- NULL
+```
+
+```{r}
+#Removing missing values
+for (n in colnames(numericCols)){
+    numericCols[, n] <- numericCols %>% select(n) %>% mutate(!!sym(n) := ifelse(is.na(!!sym(n)), median(!!sym(n), na.rm = TRUE), !!sym(n)))
+}
+```
+
+```{r}
+# Combining features
+numericCols <- numericCols %>% mutate(TotalBaths = BsmtFullBath * .5 + HalfBath * .5 + BsmtFullBath + FullBath)
+numericCols$BsmtFullBath <- NULL; numericCols$BsmtHalfBath <- NULL; numericCols$HalfBath <- NULL; 
+numericCols$FullBath <- NULL
+numericCols <- numericCols %>% mutate(TotalSF = `TotalBsmtSF` + `1stFlrSF` + `2ndFlrSF` + GrLivArea + LowQualFinSF)
+numericCols$BsmtFinSF1 <- NULL; numericCols$BsmtFinSF2 <- NULL; numericCols$BsmtUnfSF <- NULL; 
+numericCols$LowQualFinSF <- NULL; numericCols$GrLivArea <- NULL
+numericCols$TotalBsmtSF <- NULL; numericCols$"1stFlrSF" <- NULL; numericCols$"2ndFlrSF" <- NULL
+numericCols <- numericCols %>% mutate(OutdoorSF = WoodDeckSF + OpenPorchSF + EnclosedPorch + `3SsnPorch` + ScreenPorch)
+numericCols$WoodDeckSF <- NULL; numericCols$OpenPorchSF <- NULL; numericCols$EnclosedPorch <- NULL
+numericCols$"3SsnPorch" <- NULL; numericCols$ScreenPorch <- NULL
+```
+
+```{r}
+#Removing 
+
+```
+
+```{r}
+#Calculating correlations
+corr_mat <- round(cor(numericCols),2)
+melted_corr_mat <- melt(corr_mat, na.rm=TRUE)
+head(melted_corr_mat)
+```
+
+```{r, fig.cap="Correlation Matrix for Numeric Variables"}
+ggplot(melted_corr_mat, aes(x=Var1, y=Var2, fill=value)) + geom_tile()
+```
+
