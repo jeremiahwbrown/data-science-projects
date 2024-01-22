@@ -22,6 +22,8 @@ library(ggplot2)
 library(GGally)
 library(reshape2)
 library(glmnet)
+library(caret)
+library(xgboost)
 ```
 
 
@@ -43,6 +45,8 @@ catCols <- train %>% select(!where(is.numeric))
 cat(paste("Numeric Columns: ", colnames(numericCols)), "\n\n")
 cat(paste("Categorical Columns: ", colnames(catCols)))
 ```
+
+
 ```{r}
 # Removing Id and other categorical variables.
 numericCols$Id <- NULL
@@ -72,17 +76,18 @@ catCols$BedroomAbvGr <- numericCols$BedroomAbvGr
 numericCols$BedroomAbvGr <- NULL
 catCols$KitchenAbvGr <- numericCols$KitchenAbvGr
 numericCols$KitchenAbvGr <- NULL
+numericCols$SalePrice <- NULL
 ```
 
 ```{r}
-#Removing missing values
+#Replacing missing numeric values
 for (n in colnames(numericCols)){
-    numericCols[, n] <- numericCols %>% select(n) %>% mutate(!!sym(n) := ifelse(is.na(!!sym(n)), median(!!sym(n), na.rm = TRUE), !!sym(n)))
+    numericCols[, n] <- numericCols %>% select(all_of(n)) %>% mutate(!!sym(n) := ifelse(is.na(!!sym(n)), median(!!sym(n), na.rm = TRUE), !!sym(n)))
 }
 ```
 
 ```{r}
-# Combining features
+# Combining numeric features
 numericCols <- numericCols %>% mutate(TotalBaths = BsmtFullBath * .5 + HalfBath * .5 + BsmtFullBath + FullBath)
 numericCols$BsmtFullBath <- NULL; numericCols$BsmtHalfBath <- NULL; numericCols$HalfBath <- NULL; 
 numericCols$FullBath <- NULL
@@ -96,18 +101,58 @@ numericCols$"3SsnPorch" <- NULL; numericCols$ScreenPorch <- NULL
 ```
 
 ```{r}
-#Removing 
+calc_mode <- function(tb){
+  mode_val <- tb %>% group_by(colnames(tb)[1]) %>% arrange(desc(colnames(tb)[1]))
+  if (is.na(mode_val[[colnames(tb)[1]]][1])){
+    if(is.list(mode_val[[colnames(tb)[2]]])){
+      return (sapply(mode_val[[colnames(tb)[2]]]), toString)
+    }
+    return (mode_val[[colnames(tb[1])]][2])
+  } 
+  return (mode_val[[colnames(tb)]][1])
+}
 
 ```
 
 ```{r}
-#Calculating correlations
-corr_mat <- round(cor(numericCols),2)
-melted_corr_mat <- melt(corr_mat, na.rm=TRUE)
-head(melted_corr_mat)
+#Replacing missing categorical values
+remaining_cols <- list()
+for (n in colnames(catCols)){
+  mode_val <- md <- catCols %>% select(n) %>% group_by(!!sym(n)) %>% summarize(count = n()) %>% arrange(desc(count)) %>% select(n)
+  if ((!is.na(mode_val[[n]][1])) && (is.character(mode_val[[n]][1]))){
+    catCols[, n] <- catCols %>% select(all_of(n)) %>% mutate(!!sym(n) := ifelse(is.na(!!sym(n)), mode_val, !!sym(n)))
+  } else if (!is.na(mode_val[[n]][1]) && is.numeric(mode_val[[n]][1])){
+    mode_val <- calc_mode(catCols[, n])
+    catCols[, n] <- catCols %>% select(all_of(n)) %>% mutate(!!sym(n) := ifelse(is.na(!!sym(n)), mode_val, !!sym(n)))
+  } else {
+    remaining_cols <- append(remaining_cols, n)
+  }
+}
+
+for (n in colnames(catCols)){
+  if (n %in% remaining_cols){
+    catCols[, n] <- NULL
+  }
+}
 ```
 
-```{r, fig.cap="Correlation Matrix for Numeric Variables"}
-ggplot(melted_corr_mat, aes(x=Var1, y=Var2, fill=value)) + geom_tile()
+```{r}
+t <- bind_cols(numericCols, catCols)
+for (n in colnames(t)){
+  if (is.list(t[[n]])){
+    t[, n] <- NULL
+  }
+}
+
 ```
+
+```{r}
+#Traning Linear Model
+train_data <-as.matrix(t)
+fit_lasso <- cv.glmnet(train_data, train$SalePrice, alpha=1)
+predictions <- predict(fit_lasso, train_data)
+cat(paste("RMSE: ", RMSE(predictions, train$SalePrice)))
+
+```
+
 
